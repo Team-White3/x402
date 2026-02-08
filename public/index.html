@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>x402 Browser Demo</title>
+    <style>
+      :root {
+        --bg: #0f1115;
+        --panel: #151923;
+        --text: #e6e8ef;
+        --muted: #9aa3b2;
+        --accent: #3ecf8e;
+        --danger: #ff6b6b;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+        background: radial-gradient(1200px 600px at 10% -10%, #1a2030 0%, #0f1115 60%);
+        color: var(--text);
+      }
+      .wrap {
+        max-width: 760px;
+        margin: 48px auto;
+        padding: 24px;
+      }
+      .card {
+        background: var(--panel);
+        border: 1px solid #1f2432;
+        border-radius: 14px;
+        padding: 20px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+      }
+      h1 { margin: 0 0 8px; font-size: 22px; }
+      p { margin: 8px 0; color: var(--muted); }
+      .row { display: flex; gap: 12px; margin-top: 16px; }
+      input {
+        flex: 1;
+        padding: 10px 12px;
+        border-radius: 10px;
+        border: 1px solid #2a3244;
+        background: #0f1320;
+        color: var(--text);
+      }
+      button {
+        padding: 10px 14px;
+        border-radius: 10px;
+        border: 0;
+        background: var(--accent);
+        color: #0a0d12;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      button.secondary {
+        background: #2c3345;
+        color: var(--text);
+      }
+      pre {
+        white-space: pre-wrap;
+        word-break: break-word;
+        background: #0b0f18;
+        border: 1px solid #1f2432;
+        padding: 12px;
+        border-radius: 10px;
+        margin-top: 12px;
+      }
+      .error { color: var(--danger); }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="card">
+        <h1>x402 Browser Demo</h1>
+        <p>点击连接钱包，输入问题，自动完成 402 → 转账 → 重试。</p>
+        <div class="row">
+          <button id="connect">Connect Wallet</button>
+          <button id="pay" class="secondary">Pay & Request</button>
+        </div>
+        <div class="row">
+          <input id="query" placeholder="Ask something" value="hello" />
+        </div>
+        <pre id="log">Waiting...</pre>
+      </div>
+    </div>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>
