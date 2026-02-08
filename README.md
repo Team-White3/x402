@@ -1,12 +1,11 @@
 # x402 TypeScript Standard Demo (Conflux eSpace)
 
-**目标**：最小可运行的 x402 标准实现（HTTP 402 + `PAYMENT-REQUIRED` + `PAYMENT-SIGNATURE`），仅支持 **原生 CFX 转账**，不依赖任何合约。仅保留**浏览器端 demo**。
+**目标**：最小可运行的 x402 标准实现（HTTP 402 + `PAYMENT-REQUIRED` + `PAYMENT-SIGNATURE`），默认支持 **原生 CFX 转账**，并可选启用 **EIP-3009（USDT 无需用户出 gas）**。仅保留**浏览器端 demo**。
 
 ## 目录结构
 
 ```
 ./
-├── src/index.ts      # Resource Server
 ├── src/index.ts      # Resource Server
 ├── public/index.html # Browser Demo
 ├── public/app.js     # Browser Demo logic
@@ -29,7 +28,7 @@ npm install
 - `USE_TESTNET`：`false` 使用 1030 主网，`true` 使用 71 测试网
 - `MAINNET_RPC_URL` / `TESTNET_RPC_URL`
 - `PAY_TO` 收款地址
-- `PRICE_UNITS` 价格（wei，默认 `1e17` = `0.1` CFX）
+- `PRICE_UNITS` 价格（最小单位，默认 `1e17` = `0.1` CFX）
 
 ## 环境变量
 
@@ -40,8 +39,17 @@ npm install
 - `MAINNET_RPC_URL`
 - `TESTNET_RPC_URL`
 - `PAY_TO` (收款地址)
-- `PRICE_UNITS` (默认 `100000000000000000` = 0.1 CFX, 18 decimals)
+- `CFX_PRICE_UNITS` (默认 `100000000000000000` = 0.1 CFX, 18 decimals)
+- `ENABLE_EIP3009` (默认 `false`，启用 USDT EIP-3009 支付)
+- `TOKEN_ADDRESS` (USDT 合约地址)
+- `TOKEN_NAME` (EIP-712 name，默认 `USDT`)
+- `TOKEN_VERSION` (EIP-712 version，默认 `1`)
+- `TOKEN_DECIMALS` (默认 `6`)
+- `USDT_PRICE_UNITS` (默认 `1000000` = 1 USDT, 6 decimals)
+- `RELAYER_PRIVATE_KEY` (EIP-3009 结算用，服务端代付 gas)
 - `MAX_TIMEOUT_SECONDS` (默认 `3600`)
+- `PENDING_WAIT_MS` (默认 `5000`，等待链上确认的单次超时)
+- `RETRY_AFTER_SECONDS` (默认 `5`，pending 时客户端重试间隔)
 
 ## 启动服务
 
@@ -56,7 +64,7 @@ npm run dev
 3. 输入问题并点击 `Pay & Request`
 
 浏览器会自动完成：
-`402 → 解析 PAYMENT-REQUIRED → 发起原生 CFX 转账 → 携带 PAYMENT‑SIGNATURE 重试`
+`402 → 解析 PAYMENT-REQUIRED → (CFX 直转 / USDT EIP-3009 签名) → 携带 PAYMENT‑SIGNATURE 重试`
 
 ## 接口说明
 
@@ -87,6 +95,22 @@ GET /api/answer?q=hello
       "asset": "CFX",
       "payTo": "0xYourTreasuryAddress",
       "maxTimeoutSeconds": 3600
+    },
+    {
+      "scheme": "exact",
+      "network": "eip155:1030",
+      "amount": "1000000",
+      "asset": "USDT",
+      "payTo": "0xYourTreasuryAddress",
+      "maxTimeoutSeconds": 3600,
+      "tokenAddress": "0xYourUsdtAddress",
+      "tokenSymbol": "USDT",
+      "tokenDecimals": 6,
+      "eip3009": {
+        "name": "USDT",
+        "version": "1",
+        "chainId": 1030
+      }
     }
   ]
 }
@@ -101,7 +125,9 @@ GET /api/answer?q=hello
 PAYMENT-SIGNATURE: base64(JSON)
 ```
 
-服务端会校验交易哈希对应的 **原生 CFX 转账**（收款地址与金额匹配）。
+服务端会校验：
+- CFX：交易哈希对应的 **原生 CFX 转账**（收款地址与金额匹配）。
+- USDT：EIP-3009 授权签名 + relayer 代付提交 `transferWithAuthorization`。
 
 PAYMENT-SIGNATURE（解码后示例）：
 
@@ -112,20 +138,22 @@ PAYMENT-SIGNATURE（解码后示例）：
   "accepted": {
     "scheme": "exact",
     "network": "eip155:1030",
-    "amount": "100",
-    "asset": "0xaf37e8b6c9ed7f6318979f56fc287d76c30847ff",
-    "payTo": "0xYourTreasuryAddress"
+    "amount": "1000000",
+    "asset": "USDT",
+    "payTo": "0xYourTreasuryAddress",
+    "tokenAddress": "0xYourUsdtAddress",
+    "tokenSymbol": "USDT",
+    "tokenDecimals": 6,
+    "eip3009": { "name": "USDT", "version": "1", "chainId": 1030 }
   },
-  "payload": {
-    "signature": "0x...",
-    "authorization": {
-      "from": "0xBuyerAddress",
-      "to": "0xYourTreasuryAddress",
-      "value": "100",
-      "validAfter": 0,
-      "validBefore": 1739999999,
-      "nonce": "0x..."
-    }
+  "eip3009Authorization": {
+    "from": "0xBuyerAddress",
+    "to": "0xYourTreasuryAddress",
+    "value": "1000000",
+    "validAfter": 1700000000,
+    "validBefore": 1700003600,
+    "nonce": "0x...",
+    "signature": "0x..."
   }
 }
 ```
@@ -135,7 +163,8 @@ PAYMENT-SIGNATURE（解码后示例）：
 - 该实现遵循 x402 V2 的 HTTP 402 交互形态。
 - `PAYMENT-REQUIRED` 与 `PAYMENT-RESPONSE` 均为 `base64(JSON)`。
 - 浏览器端使用 `eth_signTypedData_v4` 进行 EIP‑712 签名。
-- 由于链上结算依赖 relayer 私钥，请妥善保护 `RELAYER_PRIVATE_KEY`。
+- 仅当 USDT 合约实现 `transferWithAuthorization` 时，EIP-3009 才可用。
+- 启用 EIP-3009 后，服务端用 relayer 账户代付 gas，请妥善保护 `RELAYER_PRIVATE_KEY`。
 
 ## TODO（如需增强）
 
